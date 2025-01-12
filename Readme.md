@@ -1,12 +1,14 @@
-# docker-webhook-micro
+# dockerhub-webhook
 
 This is an extremely small, dependency-less, and basic executable made to run a specified command on your system when the Docker Hub pushes a webhook to your url.
 
 ## Usage
 
+- [Install Go](https://go.dev/doc/install)
 - clone the repository
 - run `go build .`
-- run `./dockerhub-hook` in the same folder as your docker-compose file
+- if required, copy the `dockerhub-hook` file in to the directory where you wish to run the command.
+- run `./dockerhub-hook`
 
 On Docker Hub:
 
@@ -23,8 +25,6 @@ Set them up as follows (using your defined HTTP endpoint if you have set a custo
 These can be placed either in a .env file in the same folder as the executable
 or they can be set on your filesystem/container
 
-Please avoid using "=" in your variable names
-
 ### REQUIRED
 
 `WHITELISTED_REPOSITORIES="user/repo user/repo2 ..."`
@@ -39,12 +39,12 @@ Defaults to `docker compose up -d`
 
 `WEBHOOK_URL="/webhook"`
 
-If you would like your webhook URL to be something other than "/webhook". Defaults to "/webhook"
+If you would like your webhook URL to be something other than "/webhook". Defaults to `"/webhook"`
 This MUST start with a "/" Ex. /dockerhook/testhook
 
 `WEB_PORT=8080`
 
-The port you would like to run the web listener on. Defaults to 8080.
+The port you would like to run the web listener on. Defaults to `8080`.
 
 #### Note:
 

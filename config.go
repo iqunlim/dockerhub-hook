@@ -12,33 +12,27 @@ import (
 // use NewConfigElement to create them only
 // Do not directly access, use Getters and setters
 var (
-	WhitelistConfig = NewConfigElement(
-		"WHITELISTED_REPOSITORIES", 
-		[]string{""}, 
-		true,
-	) 
-	WebhookCommandConfig = NewConfigElement(
-		"ON_WEBHOOK_COMMAND", 
-		[]string{"docker", "compose", "up", "-d"}, 
-		false,
-	)
-	OnWebhookCommandConfig = NewConfigElement(
-		"WEBHOOK_URL", 
-		[]string{"/webhook"}, 
-		false,
-	)
-	Port = NewConfigElement(
-		"WEB_PORT",
-		[]string{"8080"},
-		false,
-	)
-
-	// Make sure to add the config elements to this list!
 	ConfigElementsList = []*ConfigElement{
-		&WhitelistConfig, 
-		&WebhookCommandConfig, 
-		&OnWebhookCommandConfig,
-		&Port,
+		NewConfigElement(
+			"WHITELISTED_REPOSITORIES", 
+			[]string{""}, 
+			true,
+		),
+		NewConfigElement(
+			"ON_WEBHOOK_COMMAND", 
+			[]string{"docker", "compose", "up", "-d"}, 
+			false,
+		),
+		NewConfigElement(
+			"WEBHOOK_URL", 
+			[]string{"/webhook"}, 
+			false,
+		),
+		NewConfigElement(
+			"WEB_PORT",
+			[]string{"8080"},
+			false,
+		),
 	}
 )
 
@@ -50,8 +44,8 @@ type ConfigElement struct {
 	Params []string
 }
 
-func NewConfigElement(name string, defaultValue []string, required bool) ConfigElement {
-	return ConfigElement{
+func NewConfigElement(name string, defaultValue []string, required bool) *ConfigElement {
+	return &ConfigElement{
 		name: name,
 		required: required,
 		defaultValue: defaultValue,
@@ -113,10 +107,15 @@ func ParseEnvFile() {
 	scanner := bufio.NewScanner(file)
 
 	for scanner.Scan() {
-		stringsFound := strings.Split(scanner.Text(), "=")
-		fixupEnv := strings.Trim(stringsFound[1], "\"")
+		beforeString, afterString, e := strings.Cut(scanner.Text(), "=")
+		if !e {
+			panic("Borked")
+		}
+		// We do not need any "" around the string any longer
+		fixupEnv := strings.Trim(afterString, "\"")
+		// Then we have to split it again by space for the params variable
 		splitEnv := strings.Split(fixupEnv, " ")
-		envMap[stringsFound[0]] = splitEnv
+		envMap[beforeString] = splitEnv
 	}
 
 	var params []string
@@ -175,6 +174,8 @@ func GetConfig() map[string]*ConfigElement {
 
 	for _, config := range ConfigElementsList {
 		ConfigObject[config.GetName()] = config
+		//TODO: Proper logging
+		//fmt.Printf("%s = %v\n", config.GetName(), config)
 	}
 	return ConfigObject
 }

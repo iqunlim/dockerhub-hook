@@ -46,6 +46,10 @@ This MUST start with a "/" Ex. /dockerhook/testhook
 
 The port you would like to run the web listener on. Defaults to `8080`.
 
+`LOG_LEVEL=INFO`
+
+The log level that will be printed to your operating systems stdout. defaults to `INFO`. Can be `DEBUG`, `INFO`, `WARN/WARNING`, `ERROR`
+
 #### Note:
 
 I largely made this for my own shoddy CD pipeline. It runs a raw exec.Command() on your system, so be careful using this!

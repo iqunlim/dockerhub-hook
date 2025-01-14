@@ -33,6 +33,11 @@ var (
 			[]string{"8080"},
 			false,
 		),
+		NewConfigElement(
+			"LOG_LEVEL",
+			[]string{"INFO"},
+			false,
+		),
 	}
 )
 
@@ -70,6 +75,21 @@ func (c ConfigElement) GetParams() []string {
 
 func (c *ConfigElement) SetParams(params []string) {
 	c.Params = params
+}
+
+// Returns the first index in params
+func (c *ConfigElement) First() string {
+	return c.Params[0]
+}
+
+// Returns everything after the first index in params
+// OR it returns the first index if its the only one
+func (c *ConfigElement) After() []string {
+	if len(c.Params) > 1 {
+		return c.Params[1:]
+	} else {
+		return c.Params
+	}
 }
 
 // Environment variable MUST be set or this will stop execution

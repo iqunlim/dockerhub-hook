@@ -4,36 +4,39 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
 	"slices"
-	"time"
 )
 
 var config map[string]*ConfigElement
 
 func StartWebHandler(injectedConfig map[string]*ConfigElement) {
 	config = injectedConfig
-	port := config["WEB_PORT"].GetParams()[0]
-	webEndpoint := config["WEBHOOK_URL"].GetParams()[0]
+
+	for key, val := range config {
+		logger.Debug("Configuration", "Key", key, "Val", val)
+	}
+	port := config["WEB_PORT"].First()
+	webEndpoint := config["WEBHOOK_URL"].First()
 
 	http.HandleFunc(webEndpoint, WebHookHandler)
-	fmt.Printf("Starting webserver on port: %s...\n", port)
+	logger.Info("Starting webserver...", "port", port)
 	if err := http.ListenAndServe(fmt.Sprintf(":%s", port), nil); err != nil {
-		panic(err)
+		logger.Error("Fatal Error", "source", "StartWebHandler.http.ListenAndServe", "err", err)
+		os.Exit(1)
 	}
 }
 
 func WebHookHandler(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
 
 	// Read body data
 	bodyData, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Error Reading Request Body. Try again.", http.StatusBadRequest)
-		log.Printf("Error Reading Request Body. Read body = %s", string(bodyData))
+		logger.Error("Error Reading Request Body.", "source", "WebHookHandler.io.ReadAll", "body", string(bodyData))
 		return
 	}
 
@@ -41,57 +44,58 @@ func WebHookHandler(w http.ResponseWriter, r *http.Request) {
 	var payload *WebhookPayload
 	if err := json.Unmarshal(bodyData, &payload); err != nil {
 		http.Error(w, "Error Reading Request Body. Try again.", http.StatusBadRequest)
-		log.Printf("Error Unmarshalling json from the Request Body. Read body = %s", string(bodyData))
+		logger.Error("Error Unmarshalling json from the Request Body", "source", "WebHookHandler.io.ReaAll", "body", string(bodyData))
 		return
 	}
 
-	log.Printf("Webhook Received from repository \"%v\"", payload.Repository.RepoName)
+	logger.Info("Webhook Received", "repositoryName", payload.Repository.RepoName)
 	// Run the payloads command 
 	go RunCmd(payload)
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "OK")
+	logger.Info("WebHandler Returned OK")
 }
 // The actual command functionality
 func RunCmd(w *WebhookPayload) {
-	cmdName := config["ON_WEBHOOK_COMMAND"].GetParams()[0]
-	cmdExec := config["ON_WEBHOOK_COMMAND"].GetParams()[1:]
+	cmdName := config["ON_WEBHOOK_COMMAND"].First()
+	cmdExec := config["ON_WEBHOOK_COMMAND"].After()
 	cmd := exec.Command(cmdName, cmdExec...)
 
 	// Set up the run log for this request
-	formattedTime := time.Now().Format(time.RFC3339)
-	formattedTimeStdout := fmt.Sprintf("./runlogs/run-%s.log", formattedTime)
-	formattedTimeStderr := fmt.Sprintf("./runlogs/run-%s.err.log", formattedTime)
-	runlogs, err := os.OpenFile(formattedTimeStdout, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0447)
-	runlogsErr, err := os.OpenFile(formattedTimeStderr, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0447)
-	if err != nil {
-		log.Println("Error in opening log files")
-		log.Println(err)
-		return
-	}
-	defer runlogs.Close()
-	defer runlogsErr.Close()
 
 	// Set command stdout to these files
-	cmd.Stdout = io.Writer(runlogs)
-	cmd.Stderr = io.Writer(runlogsErr)
+	//cmd.Stdout = io.Writer(runlogs)
+	//cmd.Stderr = io.Writer(runlogsErr)
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		logger.Error("Failed to create stdout pipe", "source", "RunCmd.cmd.stdoutPipe", "err", err)
+	}
 
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		logger.Error("Failed to create stderr pipe", "source", "RunCmd.cmd.stderrPipe", "err", err)
+	}
 
 	// Check against whitelist
 	if !slices.Contains(config["WHITELISTED_REPOSITORIES"].Params, w.Repository.RepoName) {
-		fmt.Fprintln(cmd.Stderr, "The received repository was not in the whitelist")
+		logger.Warn("The received repository was not in the whitelist", "repository", w.Repository.RepoName)
 		return
 	}
 	// run the command
-	fmt.Fprintln(cmd.Stdout, "++++Execution output++++")
-	err = cmd.Run()
+	err = cmd.Start()
 	if err != nil {
-		fmt.Fprintln(cmd.Stderr, "Error running command")
-		fmt.Fprintln(cmd.Stderr, err.Error())
+		logger.Error("Error starting command", "command", cmdName, "args", cmdExec, "err", err, "source", "RunCmd.cmd.Start")
 		return
 	}
-	fmt.Fprintln(cmd.Stdout, "++++++++++++++++++++++++")
 
-	// Success?
-	fmt.Fprintf(cmd.Stdout, "The run for %s has completed successfully.", cmd.Args)
+	go pipeToLogger(stdoutPipe, logger, slog.LevelInfo)
+	go pipeToLogger(stderrPipe, logger, slog.LevelError)
+
+	if err := cmd.Wait(); err != nil {
+		logger.Error("Command execution failed", "source", "RunCmd.cmd.Wait", "err", err, "command", cmdName, "args", cmdExec)
+		return
+	} else {
+		logger.Info("The command has completed successfully.")
+	}
 }
